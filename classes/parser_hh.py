@@ -1,7 +1,7 @@
+import re
 from json import dump
 from re import compile, IGNORECASE, Pattern
 from time import sleep
-from typing import AnyStr
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag, ResultSet
@@ -10,11 +10,13 @@ from requests import get
 
 
 class ParserHH:
-    def __init__(self, url: str, keywords: list[str]):
+    def __init__(self, url: str, keywords: list[str], salary_type: str | None = None, match_all_keywords=False):
         self.url = url
         user_agent = FakeUserAgent().chrome
         self.__headers = {'User-Agent': user_agent}
-        self.__pattern = self.__create_pattern(keywords)
+        self.__patterns = self.__create_keywords_patterns(keywords)
+        self.__salary_pattern = self.__create_salary_pattern(salary_type) if salary_type else None
+        self.match_all_keywords = match_all_keywords
         self.posts = []
 
     def parse_all_pages(self):
@@ -43,13 +45,16 @@ class ParserHH:
         for job in jobs:
             url = self.__get_url(job)
             salary = self.__get_salary(job)
+            if not self.__check_salary(salary):
+                continue
             company = self.__get_company(job)
             city = self.__get_city(job)
             description = self.__get_full_description(url)
-            if self.__check_pattern(description):
-                jobs_dict = dict(url=url, salary=salary, company=company, city=city)
-                print(jobs_dict)
-                self.posts.append(jobs_dict)
+            if not self.__check_keywords(description):
+                continue
+            jobs_dict = dict(url=url, salary=salary, company=company, city=city)
+            print(jobs_dict)
+            self.posts.append(jobs_dict)
 
     def __get_bs4_body(self, url: str):
         sleep(0.5)
@@ -65,8 +70,23 @@ class ParserHH:
             description = description_tag.text
         return description
 
-    def __check_pattern(self, text: str):
-        return bool(self.__pattern.search(text))
+    def __check_keywords(self, text: str):
+        match = True
+        for pattern in self.__patterns:
+            if self.match_all_keywords and not pattern.search(text):
+                match = False
+                break
+            elif not self.match_all_keywords and pattern.search(text):
+                break
+        else:
+            if not self.match_all_keywords:
+                match = False
+        return match
+
+    def __check_salary(self, salary: str):
+        if not self.__salary_pattern:
+            return True
+        return bool(self.__salary_pattern.search(salary))
 
     def __create_json(self):
         with open('jobs.json', 'w+', encoding='utf-8') as file:
@@ -110,8 +130,16 @@ class ParserHH:
         return salary
 
     @staticmethod
-    def __create_pattern(keywords: list[str]) -> Pattern[AnyStr]:
-        return compile('|'.join(keywords), IGNORECASE)
+    def __create_keywords_patterns(keywords: list[str]) -> list[Pattern]:
+        patterns = []
+        for word in keywords:
+            pattern = re.compile(word, IGNORECASE)
+            patterns.append(pattern)
+        return patterns
+
+    @staticmethod
+    def __create_salary_pattern(salary_type: str):
+        return compile(salary_type, IGNORECASE)
 
     @staticmethod
     def __get_total_pages(body: BeautifulSoup) -> int:
