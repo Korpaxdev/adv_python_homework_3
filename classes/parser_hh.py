@@ -94,8 +94,8 @@ class ParserHH:
 
     @staticmethod
     def __get_jobs(body):
-        posts = body.find_all('div', class_='serp-item')
-        return posts
+        jobs = body.find_all('div', class_='serp-item')
+        return jobs
 
     @staticmethod
     def __get_url(job: Tag):
